@@ -185,7 +185,7 @@
             const handleLinkClick = (link) => {
                 if (link.requiresAd) {
                     setActiveAdLink(link);
-                    setAdTimer(5);
+                    setAdTimer(10);
                     setAdFinished(false);
                 } else {
                     handleIncrementClick(link.id, link.clicks);
