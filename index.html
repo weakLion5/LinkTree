@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="id" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Asuna Link</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: { darkBg: '#000000', darkCard: '#1c1c1e' },
+                    transitionTimingFunction: { 'ios': 'cubic-bezier(0.32, 0.72, 0, 1)' }
+                }
+            }
+        }
+    </script>
+    
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <!-- FIREBASE LIBRARIES (Wajib ada) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .dark ::-webkit-scrollbar-thumb { background: #475569; }
+        .glass { background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); }
+        .dark .glass { background: rgba(28, 28, 30, 0.75); }
+        .island-expand { max-width: 320px; height: 120px; border-radius: 32px; }
+        .island-collapse { max-width: 160px; height: 40px; border-radius: 9999px; }
+    </style>
+</head>
+<body class="bg-[#f2f2f7] dark:bg-darkBg text-slate-900 dark:text-slate-100 min-h-screen">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // =========================================================================
+        // MASUKIN CONFIG FIREBASE LU DI SINI NGAB!!! (Ganti tulisan di dalem kutip)
+        // Copy paste dari Apple Notes lu ke sini:
+        // =========================================================================
+        const firebaseConfig = {
+  apiKey: "AIzaSyCt6hURSwI9OgFiKiB3CXRWpopXIhFRaNc",
+  authDomain: "asunalink.firebaseapp.com",
+  projectId: "asunalink",
+  storageBucket: "asunalink.firebasestorage.app",
+  messagingSenderId: "449479606004",
+  appId: "1:449479606004:web:0a387f9de64f592817e8a1"
+};
+        // =========================================================================
+
+        // Initialize Firebase
+        let db;
+        let isFirebaseReady = false;
+        try {
+            if (firebaseConfig.apiKey !== "AIzaSyCt6hURSwI9OgFiKiB3CXRWpopXIhFRaNc") {
+                firebase.initializeApp(firebaseConfig);
+                db = firebase.firestore();
+                isFirebaseReady = true;
+            }
+        } catch (error) {
+            console.error("Firebase init error:", error);
+        }
+
+        const playlist = [
+            { title: "Crossing Field (Lofi)", artist: "LiSA x Lofi", src: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" },
+            { title: "Ignite (Chill Mix)", artist: "Eir Aoi", src: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3" }
+        ];
+
+        function App() {
+            // STATES
+            const [links, setLinks] = useState([]); // Sekarang kosong di awal, nunggu data dari Firebase
+            const [isLoadingData, setIsLoadingData] = useState(true);
+            const [searchQuery, setSearchQuery] = useState('');
+            const [isAdmin, setIsAdmin] = useState(false);
+            const [toast, setToast] = useState(null);
+            
+            const [isHeaderBig, setIsHeaderBig] = useState(true);
+            const touchStartY = useRef(0);
+            
+            const [isDark, setIsDark] = useState(() => localStorage.getItem('asunaTheme') === 'dark');
+
+            const [activeAdLink, setActiveAdLink] = useState(null);
+            const [adTimer, setAdTimer] = useState(5);
+            const [adFinished, setAdFinished] = useState(false);
+
+            const audioRef = useRef(null);
+            const [currentTrack, setCurrentTrack] = useState(0);
+            const [isPlaying, setIsPlaying] = useState(false);
+            const [isIslandExpanded, setIsIslandExpanded] = useState(false);
+            let islandTimeout = useRef(null);
+
+            // Cek Mode Admin
+            useEffect(() => {
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.get('admin') === 'asuna') setIsAdmin(true);
+            }, []);
+
+            // LOAD DATA DARI FIREBASE (Real-time!)
+            useEffect(() => {
+                if (!isFirebaseReady) {
+                    setIsLoadingData(false);
+                    return;
+                }
+                
+                // Ini fungsi canggih Firebase. Kalau ada update di web, HP lu otomatis nyesuaiin tanpa reload
+                const unsubscribe = db.collection('links').orderBy('clicks', 'desc').onSnapshot((snapshot) => {
+                    const linksData = [];
+                    snapshot.forEach((doc) => {
+                        linksData.push({ id: doc.id, ...doc.data() });
+                    });
+                    setLinks(linksData);
+                    setIsLoadingData(false);
+                }, (error) => {
+                    console.error("Error fetching data: ", error);
+                    setIsLoadingData(false);
+                    showToast("Gagal ambil data dari Database!");
+                });
+
+                return () => unsubscribe();
+            }, []);
+
+            // Efek Dark Mode
+            useEffect(() => {
+                if (isDark) { document.documentElement.classList.add('dark'); localStorage.setItem('asunaTheme', 'dark'); } 
+                else { document.documentElement.classList.remove('dark'); localStorage.setItem('asunaTheme', 'light'); }
+            }, [isDark]);
+
+            // Header Scroll Physics
+            useEffect(() => {
+                const handleScroll = () => { if (window.scrollY > 30) setIsHeaderBig(false); };
+                const handleWheel = (e) => { if (window.scrollY === 0 && e.deltaY < -20) setIsHeaderBig(true); };
+                const handleTouchStart = (e) => { touchStartY.current = e.touches[0].clientY; };
+                const handleTouchMove = (e) => { if (window.scrollY === 0 && (e.touches[0].clientY - touchStartY.current) > 40) setIsHeaderBig(true); };
+
+                window.addEventListener('scroll', handleScroll, { passive: true });
+                window.addEventListener('wheel', handleWheel, { passive: true });
+                window.addEventListener('touchstart', handleTouchStart, { passive: true });
+                window.addEventListener('touchmove', handleTouchMove, { passive: true });
+                return () => {
+                    window.removeEventListener('scroll', handleScroll); window.removeEventListener('wheel', handleWheel);
+                    window.removeEventListener('touchstart', handleTouchStart); window.removeEventListener('touchmove', handleTouchMove);
+                };
+            }, []);
+
+            // Ad Timer
+            useEffect(() => {
+                let interval;
+                if (activeAdLink && !adFinished && adTimer > 0) {
+                    interval = setInterval(() => setAdTimer(prev => prev - 1), 1000);
+                } else if (adTimer === 0 && !adFinished) {
+                    setAdFinished(true);
+                    handleIncrementClick(activeAdLink.id, activeAdLink.clicks); // Update ke Firebase
+                }
+                return () => clearInterval(interval);
+            }, [activeAdLink, adTimer, adFinished]);
+
+            useEffect(() => {
+                const audio = audioRef.current;
+                const handleEnded = () => handleNextTrack();
+                if(audio) audio.addEventListener('ended', handleEnded);
+                return () => { if(audio) audio.removeEventListener('ended', handleEnded); }
+            }, [currentTrack]);
+
+            // UPDATE CLICKS KE FIREBASE
+            const handleIncrementClick = async (id, currentClicks) => {
+                if (!isFirebaseReady) return;
+                try {
+                    await db.collection('links').doc(id).update({
+                        clicks: currentClicks + 1
+                    });
+                } catch (error) { console.error("Error updating clicks:", error); }
+            };
+
+            const handleLinkClick = (link) => {
+                if (link.requiresAd) {
+                    setActiveAdLink(link);
+                    setAdTimer(5);
+                    setAdFinished(false);
+                } else {
+                    handleIncrementClick(link.id, link.clicks);
+                    window.open(link.url, '_blank');
+                }
+            };
+
+            const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
+            const copyToClipboard = (url) => {
+                navigator.clipboard.writeText(url).then(() => showToast('Link berhasil di-copy!')).catch(err => {
+                    const textArea = document.createElement("textarea"); textArea.value = url; document.body.appendChild(textArea); textArea.select();
+                    try { document.execCommand('copy'); showToast('Link berhasil di-copy!'); } catch (err) { showToast('Gagal copy link'); }
+                    document.body.removeChild(textArea);
+                });
+            };
+
+            // Audio Logic
+            const togglePlay = (e) => { e.stopPropagation(); if (isPlaying) audioRef.current.pause(); else audioRef.current.play().catch(e=>console.log("Blocked")); setIsPlaying(!isPlaying); resetIslandTimeout(); };
+            const handleNextTrack = (e) => { if(e) e.stopPropagation(); setCurrentTrack((prev) => (prev + 1) % playlist.length); setIsPlaying(true); setTimeout(() => audioRef.current.play(), 100); resetIslandTimeout(); };
+            const handlePrevTrack = (e) => { e.stopPropagation(); setCurrentTrack((prev) => (prev - 1 + playlist.length) % playlist.length); setIsPlaying(true); setTimeout(() => audioRef.current.play(), 100); resetIslandTimeout(); };
+            const toggleIsland = () => { setIsIslandExpanded(!isIslandExpanded); if (!isIslandExpanded) resetIslandTimeout(); };
+            const resetIslandTimeout = () => { if (islandTimeout.current) clearTimeout(islandTimeout.current); islandTimeout.current = setTimeout(() => setIsIslandExpanded(false), 5000); };
+
+            const categories = [...new Set(links.map(l => l.category))];
+            const filteredLinks = links.filter(link => link.title.toLowerCase().includes(searchQuery.toLowerCase()) || link.category.toLowerCase().includes(searchQuery.toLowerCase()));
+
+            return (
+                <div className="max-w-md mx-auto relative min-h-screen flex flex-col shadow-2xl bg-[#f2f2f7] dark:bg-darkBg transition-colors duration-500">
+                    
+                    {/* ALERT KALAU FIREBASE BELUM DIISI */}
+                    {!isFirebaseReady && !isLoadingData && (
+                        <div className="bg-red-500 text-white p-4 text-center text-sm font-bold z-[100] relative">
+                            ⚠️ Bro! Lu belum masukin API Key Firebase lu di dalam kode. Kategori dan link gak bakal muncul sebelum lu masukin!
+                        </div>
+                    )}
+
+                    {toast && (
+                        <div className="fixed top-24 left-1/2 transform -translate-x-1/2 z-[70] bg-slate-800/90 backdrop-blur-md text-white px-5 py-2.5 rounded-full shadow-lg text-sm font-semibold animate-in slide-in-from-top-4 fade-in">
+                            {toast}
+                        </div>
+                    )}
+
+                    {/* DYNAMIC ISLAND */}
+                    <div className="fixed top-4 left-0 right-0 z-50 flex justify-center px-4 pointer-events-none">
+                        <div onClick={toggleIsland} className={`pointer-events-auto bg-black text-white overflow-hidden transition-all duration-500 ease-ios cursor-pointer flex flex-col justify-center relative shadow-xl ${isIslandExpanded ? 'island-expand w-full px-6 py-4' : 'island-collapse w-32 px-3'}`}>
+                            <div className={`flex items-center justify-between w-full absolute inset-0 px-4 transition-opacity duration-300 ${isIslandExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                                <i className="ph-fill ph-music-note text-purple-400"></i>
+                                {isPlaying ? (
+                                    <div className="flex gap-1 items-end h-3"><div className="w-1 bg-green-400 rounded-full animate-pulse h-full"></div><div className="w-1 bg-green-400 rounded-full animate-pulse h-2/3 delay-75"></div><div className="w-1 bg-green-400 rounded-full animate-pulse h-full delay-150"></div></div>
+                                ) : <span className="text-[10px] text-gray-400 font-bold tracking-widest uppercase">Paused</span>}
+                            </div>
+                            <div className={`w-full flex flex-col h-full justify-between transition-opacity duration-300 delay-100 ${isIslandExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 bg-zinc-800 rounded-xl flex items-center justify-center"><i className="ph-fill ph-vinyl-record text-2xl text-purple-400 animate-spin" style={{ animationDuration: '3s', animationPlayState: isPlaying ? 'running' : 'paused' }}></i></div>
+                                    <div className="flex-1 min-w-0"><p className="text-white font-semibold text-sm truncate">{playlist[currentTrack].title}</p><p className="text-gray-400 text-xs truncate">{playlist[currentTrack].artist}</p></div>
+                                </div>
+                                <div className="flex items-center justify-center gap-6 mt-2">
+                                    <button onClick={handlePrevTrack} className="text-white hover:text-gray-300 active:scale-95 transition-transform"><i className="ph-fill ph-skip-back text-2xl"></i></button>
+                                    <button onClick={togglePlay} className="text-white hover:scale-110 active:scale-95 transition-transform">{isPlaying ? <i className="ph-fill ph-pause-circle text-4xl"></i> : <i className="ph-fill ph-play-circle text-4xl"></i>}</button>
+                                    <button onClick={handleNextTrack} className="text-white hover:text-gray-300 active:scale-95 transition-transform"><i className="ph-fill ph-skip-forward text-2xl"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                        <audio ref={audioRef} src={playlist[currentTrack].src} preload="none"></audio>
+                    </div>
+
+                    {/* HEADER */}
+                    <div className={`sticky top-0 z-40 glass transition-all duration-500 ease-ios border-b ${!isHeaderBig ? 'pt-[72px] pb-3 px-4 border-slate-200/50 dark:border-zinc-800/80 shadow-sm' : 'pt-24 pb-5 px-4 border-transparent dark:border-transparent'}`}>
+                        <div className={`flex flex-col items-center justify-center transition-all duration-500 ease-ios overflow-hidden transform origin-top ${!isHeaderBig ? 'max-h-0 opacity-0 mb-0 scale-90 -translate-y-4' : 'max-h-[200px] opacity-100 mb-5 scale-100 translate-y-0'}`}>
+                            <div className="absolute right-4 top-24">
+                                <button onClick={() => setIsDark(!isDark)} className={`w-10 h-10 rounded-full bg-white dark:bg-darkCard shadow-sm flex items-center justify-center text-slate-800 dark:text-yellow-400 hover:scale-105 active:scale-95 transition-transform ${!isHeaderBig ? 'hidden' : 'flex'}`}>
+                                    {isDark ? <i className="ph-fill ph-sun text-xl"></i> : <i className="ph-fill ph-moon text-xl"></i>}
+                                </button>
+                            </div>
+                            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-lg mb-3 flex items-center justify-center text-white text-4xl font-black border-4 border-white dark:border-darkCard shrink-0">A</div>
+                            <h1 className="text-2xl font-black text-slate-900 dark:text-white shrink-0 tracking-tight">Asuna Link</h1>
+                            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 shrink-0">Racun Cosplay & Setup Impian</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <div className={`flex items-center gap-2 transition-all duration-500 ease-ios overflow-hidden whitespace-nowrap ${!isHeaderBig ? 'max-w-[140px] opacity-100 translate-x-0' : 'max-w-0 opacity-0 -translate-x-4'}`}>
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-pink-500 flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-sm">A</div>
+                                <span className="font-bold text-slate-900 dark:text-white text-sm shrink-0">Asuna Link</span>
+                            </div>
+                            <div className="relative flex-1">
+                                <i className="ph ph-magnifying-glass absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 dark:text-slate-500 text-lg"></i>
+                                <input type="text" placeholder="Cari link..." className="w-full bg-slate-200/60 dark:bg-zinc-800/60 text-slate-900 dark:text-white rounded-xl py-2 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all text-[14px] font-medium placeholder-slate-500" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                            </div>
+                            {!isHeaderBig && (
+                                <button onClick={() => setIsDark(!isDark)} className="w-10 h-10 rounded-xl bg-slate-200/60 dark:bg-zinc-800/60 flex items-center justify-center text-slate-800 dark:text-yellow-400 shrink-0 hover:scale-105 active:scale-95 transition-transform animate-in fade-in zoom-in-50">
+                                    {isDark ? <i className="ph-fill ph-sun text-lg"></i> : <i className="ph-fill ph-moon text-lg"></i>}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* CONTENT LIST */}
+                    <div className="px-4 py-6 space-y-6 flex-1">
+                        {isLoadingData && isFirebaseReady && (
+                            <div className="text-center py-10 text-slate-400">
+                                <i className="ph-bold ph-spinner-gap animate-spin text-3xl mb-2"></i>
+                                <p>Meload Data Database...</p>
+                            </div>
+                        )}
+
+                        {categories.map(category => {
+                            const categoryLinks = filteredLinks.filter(l => l.category === category);
+                            if (categoryLinks.length === 0) return null;
+
+                            return (
+                                <div key={category} className="space-y-3">
+                                    <h2 className="text-[12px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-2 flex items-center gap-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-purple-500"></div>{category}
+                                    </h2>
+                                    <div className="bg-white dark:bg-darkCard rounded-2xl overflow-hidden shadow-sm border border-slate-100 dark:border-zinc-800/80">
+                                        {categoryLinks.map((link, index) => (
+                                            <div key={link.id} onClick={() => handleLinkClick(link)} className={`flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-zinc-800/50 active:bg-slate-100 dark:active:bg-zinc-800 transition-colors ${index !== categoryLinks.length - 1 ? 'border-b border-slate-100 dark:border-zinc-800/80' : ''}`}>
+                                                <div className="flex-1 pr-4">
+                                                    <h3 className="text-[15px] font-semibold text-slate-900 dark:text-white leading-snug mb-1.5 line-clamp-2">{link.title}</h3>
+                                                    <div className="flex items-center space-x-2 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                                        <span className="flex items-center bg-slate-100 dark:bg-zinc-800 px-2 py-0.5 rounded-md"><i className="ph-fill ph-fire text-orange-500 mr-1 text-sm"></i>{link.clicks}</span>
+                                                        {link.requiresAd && <span className="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 px-2 py-0.5 rounded-md flex items-center"><i className="ph-fill ph-star mr-1"></i> Ads</span>}
+                                                    </div>
+                                                </div>
+                                                <div className="w-8 h-8 rounded-full bg-slate-50 dark:bg-zinc-800 flex items-center justify-center text-slate-400 dark:text-slate-500 shadow-sm border border-slate-100 dark:border-zinc-700 transition-transform group-active:scale-95"><i className="ph-bold ph-arrow-up-right"></i></div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    <footer className="mt-8 pt-8 pb-12 px-6 border-t border-slate-200 dark:border-zinc-800/80 bg-[#f2f2f7] dark:bg-darkBg">
+                        <div className="flex justify-center space-x-6 mb-6">
+                            <a href="#" className="text-slate-400 hover:text-slate-900 dark:hover:text-white"><i className="ph-fill ph-instagram-logo text-2xl"></i></a>
+                            <a href="#" className="text-slate-400 hover:text-slate-900 dark:hover:text-white"><i className="ph-fill ph-tiktok-logo text-2xl"></i></a>
+                        </div>
+                        <div className="text-center">
+                            <p className="text-[11px] text-slate-400 dark:text-slate-500">Copyright © 2026 Asuna Inc.</p>
+                        </div>
+                    </footer>
+
+                    {/* AD MODAL / INTERSTITIAL */}
+                    {activeAdLink && (
+                        <div className="fixed inset-0 z-[60] bg-[#f2f2f7] dark:bg-darkBg flex flex-col items-center justify-center px-4 animate-in fade-in zoom-in-95 duration-200">
+                            <button onClick={() => {setActiveAdLink(null); setAdFinished(false);}} className="absolute top-6 right-6 w-10 h-10 bg-white dark:bg-darkCard rounded-full flex items-center justify-center shadow-md text-slate-500 dark:text-slate-400"><i className="ph-bold ph-x text-lg"></i></button>
+                            <div className="w-full max-w-sm bg-white dark:bg-darkCard p-6 rounded-3xl shadow-2xl border border-slate-100 dark:border-zinc-800 flex flex-col items-center text-center">
+                                <div className="w-16 h-16 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full flex items-center justify-center mb-4"><i className="ph-fill ph-megaphone text-3xl"></i></div>
+                                <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Pesan Sponsor</h2>
+                                <div className="w-full h-40 bg-slate-50 dark:bg-zinc-900 rounded-2xl border-2 border-dashed border-slate-300 dark:border-zinc-700 flex items-center justify-center mb-6 relative overflow-hidden group"><span className="text-slate-400 dark:text-slate-500 font-medium text-sm">Space Iklan</span></div>
+                                <div className="w-full bg-slate-50 dark:bg-zinc-900 p-4 rounded-2xl mb-6 relative overflow-hidden border border-slate-100 dark:border-zinc-800">
+                                    <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest text-left mb-1">Target URL</p>
+                                    <div className="relative h-6">
+                                        <p className={`text-purple-600 dark:text-purple-400 font-medium break-all text-left transition-all duration-700 absolute inset-0 ${!adFinished ? 'blur-md opacity-50 select-none' : 'blur-0 opacity-100'}`}>{activeAdLink.url}</p>
+                                        {!adFinished && <div className="absolute inset-0 flex items-center justify-center bg-white/20 dark:bg-black/20 backdrop-blur-sm rounded"><i className="ph-fill ph-lock-key text-xl text-slate-600 dark:text-slate-400"></i></div>}
+                                    </div>
+                                </div>
+                                {!adFinished ? (
+                                    <div className="w-full py-3.5 bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-slate-300 rounded-2xl font-bold flex items-center justify-center gap-2"><i className="ph-bold ph-spinner-gap animate-spin text-xl"></i> {adTimer} detik...</div>
+                                ) : (
+                                    <div className="w-full flex gap-3 animate-in slide-in-from-bottom-2">
+                                        <button onClick={() => copyToClipboard(activeAdLink.url)} className="flex-1 py-3.5 bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-white rounded-2xl font-bold active:scale-95 transition-all"><i className="ph-bold ph-copy mr-2"></i>Copy</button>
+                                        <button onClick={() => { window.open(activeAdLink.url, '_blank'); setActiveAdLink(null); }} className="flex-[2] py-3.5 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl font-bold active:scale-95 transition-all shadow-lg shadow-purple-500/30 flex items-center justify-center">Gas Buka</button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ADMIN PANEL FIREBASE */}
+                    {isAdmin && <AdminPanel db={db} isFirebaseReady={isFirebaseReady} links={links} categories={categories} showToast={showToast} />}
+                </div>
+            );
+        }
+
+        function AdminPanel({ db, isFirebaseReady, links, categories, showToast }) {
+            const [newLink, setNewLink] = useState({ title: '', url: '', category: '', requiresAd: true, clicks: 0 });
+
+            const handleAddLink = async (e) => {
+                e.preventDefault();
+                if(!isFirebaseReady) return showToast('Database belum siap!');
+                if(!newLink.title || !newLink.url || !newLink.category) return showToast('Isi form yang bener ngab!');
+                
+                try {
+                    await db.collection('links').add({
+                        title: newLink.title, url: newLink.url, category: newLink.category, 
+                        requiresAd: newLink.requiresAd, clicks: parseInt(newLink.clicks) || 0,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    setNewLink({ title: '', url: '', category: '', requiresAd: true, clicks: 0 });
+                    showToast('Link tersimpan di Database!');
+                } catch (error) { console.error("Add Error", error); showToast('Gagal simpan!'); }
+            };
+
+            const toggleAdStatus = async (id, currentStatus) => {
+                if(!isFirebaseReady) return;
+                await db.collection('links').doc(id).update({ requiresAd: !currentStatus });
+            };
+
+            const updateClicks = async (id, newClicks) => {
+                if(!isFirebaseReady) return;
+                await db.collection('links').doc(id).update({ clicks: newClicks });
+            };
+
+            const handleDelete = async (id) => { 
+                if(!isFirebaseReady) return;
+                if(confirm('Yakin hapus link ini selamanya dari DB?')) { 
+                    await db.collection('links').doc(id).delete(); showToast('Link dihapus!'); 
+                } 
+            };
+
+            return (
+                <div className="mt-4 mx-4 mb-10 bg-white dark:bg-darkCard rounded-3xl p-5 shadow-xl border border-red-500/20 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 to-orange-500"></div>
+                    <div className="flex items-center gap-2 mb-6 text-red-500"><i className="ph-fill ph-shield-warning text-2xl"></i><h2 className="text-lg font-bold">Admin Database</h2></div>
+                    
+                    <form onSubmit={handleAddLink} className="space-y-4 mb-8 bg-slate-50 dark:bg-zinc-900 p-4 rounded-2xl border border-slate-200 dark:border-zinc-800">
+                        <input type="text" placeholder="Judul Link..." required className="w-full bg-white dark:bg-darkCard border border-slate-200 dark:border-zinc-700 rounded-xl p-3 text-sm focus:ring-2 focus:ring-red-500 outline-none dark:text-white" value={newLink.title} onChange={e => setNewLink({...newLink, title: e.target.value})} />
+                        <input type="url" placeholder="URL Asli (https://...)" required className="w-full bg-white dark:bg-darkCard border border-slate-200 dark:border-zinc-700 rounded-xl p-3 text-sm focus:ring-2 focus:ring-red-500 outline-none dark:text-white" value={newLink.url} onChange={e => setNewLink({...newLink, url: e.target.value})} />
+                        <input type="text" list="category-options" placeholder="Pilih / Ketik Kategori Baru..." required className="w-full bg-white dark:bg-darkCard border border-slate-200 dark:border-zinc-700 rounded-xl p-3 text-sm focus:ring-2 focus:ring-red-500 outline-none dark:text-white" value={newLink.category} onChange={e => setNewLink({...newLink, category: e.target.value})} />
+                        <datalist id="category-options">{categories.map((cat, i) => <option key={i} value={cat} />)}</datalist>
+                        <div className="flex gap-4 items-end">
+                            <div className="flex-1">
+                                <label className="text-xs font-bold text-slate-500 block mb-1">Fake Clicks</label>
+                                <input type="number" className="w-full bg-white dark:bg-darkCard border border-slate-200 dark:border-zinc-700 rounded-xl p-3 text-sm dark:text-white" value={newLink.clicks} onChange={e => setNewLink({...newLink, clicks: e.target.value})} />
+                            </div>
+                            <div className="flex-1 bg-white dark:bg-darkCard border border-slate-200 dark:border-zinc-700 rounded-xl p-3 flex items-center justify-between cursor-pointer" onClick={() => setNewLink({...newLink, requiresAd: !newLink.requiresAd})}>
+                                <span className="text-sm font-bold dark:text-white">Iklan {newLink.requiresAd ? 'ON' : 'OFF'}</span>
+                                <div className={`w-10 h-6 rounded-full transition-colors relative ${newLink.requiresAd ? 'bg-green-500' : 'bg-slate-300 dark:bg-zinc-600'}`}><div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-all ${newLink.requiresAd ? 'left-4.5' : 'left-0.5'}`} style={{ left: newLink.requiresAd ? 'calc(100% - 1.3rem)' : '0.125rem' }}></div></div>
+                            </div>
+                        </div>
+                        <button type="submit" className="w-full bg-red-500 text-white rounded-xl p-3.5 text-sm font-bold hover:bg-red-600 active:scale-95 transition-all">Upload ke Server</button>
+                    </form>
+
+                    <h3 className="font-bold text-sm mb-3 text-slate-800 dark:text-white">Data di Server</h3>
+                    <div className="space-y-3 max-h-72 overflow-y-auto pr-1 pb-4">
+                        {links.map(link => (
+                            <div key={link.id} className="bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-4 rounded-2xl flex flex-col gap-3">
+                                <div className="flex justify-between items-start gap-2">
+                                    <div className="flex-1 min-w-0"><span className="font-bold text-sm text-slate-900 dark:text-white block truncate">{link.title}</span><span className="text-xs text-slate-500 bg-slate-200 dark:bg-zinc-800 px-2 py-0.5 rounded mt-1 inline-block">{link.category}</span></div>
+                                    <button onClick={() => handleDelete(link.id)} className="text-red-500 p-2 bg-red-100 dark:bg-red-900/30 rounded-lg hover:scale-110"><i className="ph-bold ph-trash"></i></button>
+                                </div>
+                                <div className="flex items-center justify-between border-t border-slate-200 dark:border-zinc-700 pt-3">
+                                    <div className="flex items-center gap-2"><i className="ph-fill ph-cursor text-slate-400"></i>
+                                    <input type="number" className="bg-white dark:bg-darkCard border border-slate-300 dark:border-zinc-600 rounded-lg p-1.5 w-20 text-xs font-bold dark:text-white" defaultValue={link.clicks} onBlur={(e) => updateClicks(link.id, parseInt(e.target.value) || 0)} />
+                                    </div>
+                                    <button onClick={() => toggleAdStatus(link.id, link.requiresAd)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${link.requiresAd ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400' : 'bg-slate-200 text-slate-600 dark:bg-zinc-800 dark:text-slate-400'}`}><i className={`ph-fill ${link.requiresAd ? 'ph-toggle-right' : 'ph-toggle-left'} text-lg`}></i> Ads {link.requiresAd ? 'ON' : 'OFF'}</button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
