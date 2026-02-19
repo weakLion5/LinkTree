@@ -331,7 +331,7 @@
                     {/* AD MODAL / INTERSTITIAL */}
                     {activeAdLink && (
                         <div className="fixed inset-0 z-[60] bg-[#f2f2f7] dark:bg-darkBg flex flex-col items-center justify-center px-4 animate-in fade-in zoom-in-95 duration-200">
-                            <button onClick={() => {setActiveAdLink(null); setAdFinished(false);}} className="absolute top-6 right-6 w-10 h-10 bg-white dark:bg-darkCard rounded-full flex items-center justify-center shadow-md text-slate-500 dark:text-slate-400"><i className="ph-bold ph-x text-lg"></i></button>
+                            <button onClick={() => {setActiveAdLink(null); setAdFinished(false);setAdTimer(10);}} className="absolute top-6 right-6 w-10 h-10 bg-white dark:bg-darkCard rounded-full flex items-center justify-center shadow-md text-slate-500 dark:text-slate-400"><i className="ph-bold ph-x text-lg"></i></button>
                             <div className="w-full max-w-sm bg-white dark:bg-darkCard p-6 rounded-3xl shadow-2xl border border-slate-100 dark:border-zinc-800 flex flex-col items-center text-center">
                                 <div className="w-16 h-16 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full flex items-center justify-center mb-4"><i className="ph-fill ph-megaphone text-3xl"></i></div>
                                 <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Pesan Sponsor</h2>
